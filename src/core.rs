@@ -6,14 +6,14 @@ const DB_PATH: &str = "/etc/lazy-git-checkout.db.txt";
 const PROJECT_PATH_DELIMITER: &str = ";;;;";
 
 #[derive(Debug, Clone)]
-struct Branch {
-    name: String,
+pub struct Branch {
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Project {
     pub path: String,
-    branches: Vec<Branch>,
+    pub branches: Vec<Branch>,
 }
 
 impl Project {
