@@ -136,6 +136,16 @@ pub fn remove_branch(path: &str, branch: String) -> Result<()> {
     Ok(())
 }
 
+pub fn get_branches(path: &str) -> Result<Vec<Branch>> {
+    let db = DB::load_from_disk()?;
+    let project = db.projects.iter().find(|p| path == p.path.as_str());
+    if let Some(project) = project {
+        Ok(project.branches.clone())
+    } else {
+        Err(anyhow!("no project found in path"))
+    }
+}
+
 pub fn list_projects() -> Result<()> {
     let db = DB::load_from_disk()?;
     for project in &db.projects {

@@ -60,23 +60,20 @@ impl<T> StatefulList<T> {
         };
         self.state.select(Some(i));
     }
-
-    fn unselect(&mut self) {
-        self.state.select(None);
-    }
 }
-struct UI<'a> {
+
+struct UI {
     project_path: String,
-    items: StatefulList<&'a str>,
+    items: StatefulList<String>,
 }
 
-impl<'a> UI<'a> {
-    fn new(project: &'a Project) -> UI<'a> {
+impl UI {
+    fn new(project: &Project) -> UI {
         let items = project
             .branches
             .iter()
-            .map(|b| b.name.as_str())
-            .collect::<Vec<&str>>();
+            .map(|b| b.name.clone())
+            .collect::<Vec<String>>();
 
         UI {
             project_path: project.path.clone(),
@@ -115,7 +112,7 @@ pub fn start_ui(project: Project) -> Result<()> {
 
 fn run_ui<B: Backend + Write>(
     terminal: &mut Terminal<B>,
-    mut app: UI<'_>,
+    mut app: UI,
     tick_rate: Duration,
 ) -> Result<()> {
     let mut last_tick = Instant::now();
@@ -130,9 +127,20 @@ fn run_ui<B: Backend + Write>(
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Down | KeyCode::Char('j') => app.items.next(),
                         KeyCode::Up | KeyCode::Char('k') => app.items.previous(),
+                        KeyCode::Char('r') => {
+                            let selected = app.items.state.selected().unwrap_or(0);
+                            let branch = app.items.items[selected].clone();
+                            core::remove_branch(app.project_path.as_str(), branch)?;
+                            app.items = StatefulList::with_items(
+                                core::get_branches(app.project_path.as_str())?
+                                    .iter()
+                                    .map(|b| b.name.clone())
+                                    .collect::<Vec<String>>(),
+                            );
+                        }
                         KeyCode::Enter => {
                             let selected = app.items.state.selected().unwrap_or(0);
-                            let branch = app.items.items[selected];
+                            let branch = app.items.items[selected].as_str();
                             core::checkout(app.project_path.as_str(), branch)?;
                             return Ok(());
                         }
@@ -156,7 +164,7 @@ fn draw(f: &mut Frame, app: &mut UI) {
         .items
         .items
         .iter()
-        .map(|opt| ListItem::new(*opt))
+        .map(|opt| ListItem::new(opt.clone()))
         .collect();
 
     let items = List::new(items)
