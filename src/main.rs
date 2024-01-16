@@ -7,6 +7,7 @@ use clap::Parser;
 mod cli;
 mod core;
 mod ui;
+mod widgets;
 
 fn main() -> Result<()> {
     let args = cli::CLIArgs::parse();

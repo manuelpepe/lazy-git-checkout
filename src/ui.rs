@@ -11,70 +11,17 @@ use crossterm::{
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Layout},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem},
     Frame, Terminal,
 };
 
-use crate::{core, core::Project};
-
-struct StatefulList<T> {
-    state: ListState,
-    items: Vec<T>,
-}
-impl<T> StatefulList<T> {
-    fn with_items(items: Vec<T>) -> StatefulList<T> {
-        StatefulList {
-            state: ListState::default(),
-            items,
-        }
-    }
-
-    fn set_items(&mut self, items: Vec<T>) {
-        self.items = items;
-        self.state.select(Some(0));
-    }
-
-    fn clear(&mut self) {
-        self.items.clear();
-        self.state.select(None);
-    }
-
-    fn next(&mut self) {
-        if self.items.is_empty() {
-            return;
-        }
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    fn previous(&mut self) {
-        if self.items.is_empty() {
-            return;
-        }
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-}
+use crate::{
+    core,
+    core::Project,
+    widgets::{AddBranchWidget, ExitContextResult, StatefulList},
+};
 
 enum Mode {
     Normal,
@@ -87,9 +34,7 @@ struct UI {
 
     mode: Mode,
 
-    all_branches: Vec<String>,
-    add_branch_input: String,
-    add_branch_autocomplete: StatefulList<String>,
+    add_branches_widget: AddBranchWidget,
 }
 
 impl UI {
@@ -104,56 +49,80 @@ impl UI {
             project_path: project.path.clone(),
             saved_branches: StatefulList::with_items(saved_branches),
             mode: Mode::Normal,
-            add_branch_input: String::new(),
-            all_branches: all_branches.clone(),
-            add_branch_autocomplete: StatefulList::with_items(all_branches),
+            add_branches_widget: AddBranchWidget::new(all_branches.clone()),
         }
     }
 
-    fn update_autocomplete(&mut self) {
-        let items = self
-            .all_branches
-            .iter()
-            .filter(|b| b.starts_with(self.add_branch_input.as_str()))
-            .cloned()
-            .collect::<Vec<String>>();
-        self.add_branch_autocomplete.set_items(items);
-        self.add_branch_autocomplete.state.select(None)
+    fn on_char(&mut self, c: char) {
+        match self.mode {
+            Mode::Input => self.add_branches_widget.input_char(c),
+            Mode::Normal => {}
+        }
     }
 
-    fn input_char(&mut self, c: char) {
-        self.add_branch_input.push(c);
-        self.update_autocomplete();
+    fn on_backspace(&mut self) {
+        match self.mode {
+            Mode::Input => self.add_branches_widget.remove_char(),
+            Mode::Normal => {}
+        }
     }
 
-    fn input_backspace(&mut self) {
-        self.add_branch_input.pop();
-        self.update_autocomplete();
+    fn on_enter(&mut self) -> Result<()> {
+        match self.mode {
+            Mode::Input => {
+                let new_branch = self.add_branches_widget.get_branch_name();
+                if new_branch.is_empty() {
+                    return Ok(());
+                }
+                core::add_branch(self.project_path.as_str(), new_branch)?;
+                self.reload_saved_branches()?;
+                self.mode = Mode::Normal;
+                Ok(())
+            }
+            Mode::Normal => {
+                let selected = self
+                    .saved_branches
+                    .selected()
+                    .ok_or(anyhow!("no branch selected"))?;
+                let branch = self.saved_branches.items()[selected].as_str();
+                core::checkout(self.project_path.as_str(), branch)?;
+                Ok(())
+            }
+        }
     }
 
-    fn input_enter(&mut self) -> Result<()> {
-        self.mode = Mode::Normal;
-        let new_branch = match self.add_branch_autocomplete.state.selected() {
-            Some(i) => self.add_branch_autocomplete.items[i].clone(),
-            None => self.add_branch_input.clone(),
-        };
-        core::add_branch(self.project_path.as_str(), new_branch)?;
-        self.add_branch_input.clear();
-        self.add_branch_autocomplete.clear();
+    fn on_esc(&mut self) {
+        match self.add_branches_widget.exit_context() {
+            ExitContextResult::Exit => {
+                self.mode = Mode::Normal;
+            }
+            ExitContextResult::Continue => {}
+        }
+    }
+
+    fn on_up(&mut self) {
+        match self.mode {
+            Mode::Input => self.add_branches_widget.previous(),
+            Mode::Normal => self.saved_branches.previous(),
+        }
+    }
+
+    fn on_down(&mut self) {
+        match self.mode {
+            Mode::Input => self.add_branches_widget.next(),
+            Mode::Normal => self.saved_branches.next(),
+        }
+    }
+
+    fn on_remove_branch(&mut self) -> Result<()> {
+        let selected = self
+            .saved_branches
+            .selected()
+            .ok_or(anyhow!("no branch selected"))?;
+        let branch = self.saved_branches.items()[selected].clone();
+        core::remove_branch(self.project_path.as_str(), branch)?;
         self.reload_saved_branches()?;
         Ok(())
-    }
-
-    fn input_esc(&mut self) {
-        match self.add_branch_autocomplete.state.selected() {
-            Some(_) => {
-                self.add_branch_autocomplete.state.select(None);
-            }
-            None => {
-                self.mode = Mode::Normal;
-                self.add_branch_input.clear();
-            }
-        }
     }
 
     fn reload_saved_branches(&mut self) -> Result<()> {
@@ -210,39 +179,21 @@ fn run_ui<B: Backend + Write>(
                 if key.kind == KeyEventKind::Press {
                     match app.mode {
                         Mode::Input => match key.code {
-                            KeyCode::Esc => app.input_esc(),
-                            KeyCode::Enter => app.input_enter()?,
-                            KeyCode::Char(c) => app.input_char(c),
-                            KeyCode::Backspace => app.input_backspace(),
-                            KeyCode::Down => app.add_branch_autocomplete.next(),
-                            KeyCode::Up => app.add_branch_autocomplete.previous(),
+                            KeyCode::Esc => app.on_esc(),
+                            KeyCode::Enter => app.on_enter()?,
+                            KeyCode::Char(c) => app.on_char(c),
+                            KeyCode::Backspace => app.on_backspace(),
+                            KeyCode::Down => app.on_down(),
+                            KeyCode::Up => app.on_up(),
                             _ => {}
                         },
                         Mode::Normal => match key.code {
                             KeyCode::Char('q') => return Ok(()),
                             KeyCode::Char('a') => app.mode = Mode::Input,
-                            KeyCode::Down | KeyCode::Char('j') => app.saved_branches.next(),
-                            KeyCode::Up | KeyCode::Char('k') => app.saved_branches.previous(),
-                            KeyCode::Char('r') => {
-                                let selected = app
-                                    .saved_branches
-                                    .state
-                                    .selected()
-                                    .ok_or(anyhow!("no branch selected"))?;
-                                let branch = app.saved_branches.items[selected].clone();
-                                core::remove_branch(app.project_path.as_str(), branch)?;
-                                app.reload_saved_branches()?;
-                            }
-                            KeyCode::Enter => {
-                                let selected = app
-                                    .saved_branches
-                                    .state
-                                    .selected()
-                                    .ok_or(anyhow!("no branch selected"))?;
-                                let branch = app.saved_branches.items[selected].as_str();
-                                core::checkout(app.project_path.as_str(), branch)?;
-                                return Ok(());
-                            }
+                            KeyCode::Down | KeyCode::Char('j') => app.on_down(),
+                            KeyCode::Up | KeyCode::Char('k') => app.on_up(),
+                            KeyCode::Char('r') => app.on_remove_branch()?,
+                            KeyCode::Enter => {}
                             _ => {}
                         },
                     }
@@ -262,40 +213,12 @@ fn draw(f: &mut Frame, app: &mut UI) {
 
     match app.mode {
         Mode::Input => {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Min(3)].as_ref())
-                .split(screen);
-
-            let input = Paragraph::new(app.add_branch_input.as_str())
-                .block(Block::default().title("Add branch").borders(Borders::ALL));
-
-            let items: Vec<ListItem> = app
-                .add_branch_autocomplete
-                .items
-                .iter()
-                .map(|opt| ListItem::new(opt.clone()))
-                .collect();
-
-            let autocomplete_list = List::new(items)
-                .block(Block::default().borders(Borders::ALL))
-                .highlight_style(
-                    Style::default()
-                        .bg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .highlight_symbol(">> ");
-            f.render_widget(input, chunks[0]);
-            f.render_stateful_widget(
-                autocomplete_list,
-                chunks[1],
-                &mut app.add_branch_autocomplete.state,
-            );
+            app.add_branches_widget.draw(f, screen);
         }
         Mode::Normal => {
             let items: Vec<ListItem> = app
                 .saved_branches
-                .items
+                .items()
                 .iter()
                 .map(|opt| ListItem::new(opt.clone()))
                 .collect();
