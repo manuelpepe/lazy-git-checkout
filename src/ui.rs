@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,
@@ -52,18 +52,20 @@ impl UI {
         }
     }
 
-    fn on_char(&mut self, c: char) {
+    fn on_char(&mut self, c: char) -> Result<ShouldExit> {
         match self.mode {
             Mode::Input => self.add_branches_widget.input_char(c),
             Mode::Normal => {}
         }
+        Ok(false)
     }
 
-    fn on_backspace(&mut self) {
+    fn on_backspace(&mut self) -> Result<ShouldExit> {
         match self.mode {
             Mode::Input => self.add_branches_widget.remove_char(),
             Mode::Normal => {}
         }
+        Ok(false)
     }
 
     fn on_enter(&mut self) -> Result<ShouldExit> {
@@ -81,34 +83,38 @@ impl UI {
         }
     }
 
-    fn on_esc(&mut self) {
+    fn on_esc(&mut self) -> Result<ShouldExit> {
         match self.add_branches_widget.exit_context() {
             ExitContextResult::Exit => {
                 self.mode = Mode::Normal;
             }
             ExitContextResult::Continue => {}
         }
+        Ok(false)
     }
 
-    fn on_up(&mut self) {
+    fn on_up(&mut self) -> Result<ShouldExit> {
         match self.mode {
             Mode::Input => self.add_branches_widget.previous(),
             Mode::Normal => self.change_branches_widget.previous(),
         }
+        Ok(false)
     }
 
-    fn on_down(&mut self) {
+    fn on_down(&mut self) -> Result<ShouldExit> {
         match self.mode {
             Mode::Input => self.add_branches_widget.next(),
             Mode::Normal => self.change_branches_widget.next(),
         }
+        Ok(false)
     }
 
-    fn on_remove_branch(&mut self) -> Result<()> {
+    fn on_remove_branch(&mut self) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => Ok(()),
-            Mode::Normal => self.change_branches_widget.remove_selected(),
+            Mode::Input => {}
+            Mode::Normal => self.change_branches_widget.remove_selected()?,
         }
+        Ok(false)
     }
 }
 
@@ -151,43 +157,47 @@ fn run_ui<B: Backend + Write>(
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match app.mode {
-                        Mode::Input => match key.code {
-                            KeyCode::Esc => app.on_esc(),
-                            KeyCode::Enter => match app.on_enter() {
-                                Ok(true) => return Ok(()),
-                                Ok(false) => {}
-                                Err(err) => bail!(err),
-                            },
-                            KeyCode::Char(c) => app.on_char(c),
-                            KeyCode::Backspace => app.on_backspace(),
-                            KeyCode::Down => app.on_down(),
-                            KeyCode::Up => app.on_up(),
-                            _ => {}
-                        },
-                        Mode::Normal => match key.code {
-                            KeyCode::Char('q') => return Ok(()),
-                            KeyCode::Char('a') => app.mode = Mode::Input,
-                            KeyCode::Down | KeyCode::Char('j') => app.on_down(),
-                            KeyCode::Up | KeyCode::Char('k') => app.on_up(),
-                            KeyCode::Char('r') => app.on_remove_branch()?,
-                            KeyCode::Enter => match app.on_enter() {
-                                Ok(true) => return Ok(()),
-                                Ok(false) => {}
-                                Err(err) => bail!(err),
-                            },
-                            _ => {}
-                        },
-                    }
-                }
+            match handle_input(&mut app) {
+                Ok(true) => return Ok(()),
+                Err(err) => bail!(err),
+                Ok(false) => {} // continue running
             }
         }
         if last_tick.elapsed() >= tick_rate {
             last_tick = Instant::now();
         }
     }
+}
+
+fn handle_input(app: &mut UI) -> Result<ShouldExit> {
+    if let Event::Key(key) = event::read()? {
+        if key.kind == KeyEventKind::Press {
+            return match app.mode {
+                Mode::Input => match key.code {
+                    KeyCode::Esc => app.on_esc(),
+                    KeyCode::Enter => app.on_enter(),
+                    KeyCode::Char(c) => app.on_char(c),
+                    KeyCode::Backspace => app.on_backspace(),
+                    KeyCode::Down => app.on_down(),
+                    KeyCode::Up => app.on_up(),
+                    _ => Ok(false),
+                },
+                Mode::Normal => match key.code {
+                    KeyCode::Char('q') => Ok(true),
+                    KeyCode::Char('a') => {
+                        app.mode = Mode::Input;
+                        Ok(false)
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => app.on_down(),
+                    KeyCode::Up | KeyCode::Char('k') => app.on_up(),
+                    KeyCode::Char('r') => app.on_remove_branch(),
+                    KeyCode::Enter => app.on_enter(),
+                    _ => Ok(false),
+                },
+            };
+        }
+    }
+    Ok(false)
 }
 
 fn draw(f: &mut Frame, app: &mut UI) {

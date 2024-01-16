@@ -27,11 +27,6 @@ impl<T> StatefulList<T> {
         self.state.select(Some(0));
     }
 
-    pub fn clear(&mut self) {
-        self.items.clear();
-        self.state.select(None);
-    }
-
     pub fn next(&mut self) {
         if self.items.is_empty() {
             return;
