@@ -29,7 +29,8 @@ fn main() -> Result<()> {
         core::list_projects()?;
     } else {
         let proj = cur_project()?;
-        ui::start_ui(proj)?;
+        let branches = core::all_project_branches(proj.path.as_str())?;
+        ui::start_ui(proj, branches)?;
     }
 
     Ok(())

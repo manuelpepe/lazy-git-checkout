@@ -171,6 +171,20 @@ pub fn checkout(path: &str, branch: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn all_project_branches(path: &str) -> Result<Vec<String>> {
+    let output = run_git_command(path, vec!["branch", "-a"])?;
+    let branches = String::from_utf8(output.stdout)?;
+    let branches = branches.split('\n');
+    let branches = branches
+        .map(|b| b.trim())
+        .filter(|b| !b.is_empty())
+        .map(|b| b.trim_start_matches('*'))
+        .map(|b| b.trim())
+        .map(|b| b.to_string())
+        .collect::<Vec<String>>();
+    Ok(branches)
+}
+
 fn run_git_command(path: &str, command: Vec<&str>) -> Result<Output> {
     let output = std::process::Command::new("git")
         .args(command)
