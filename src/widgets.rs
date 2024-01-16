@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -5,6 +6,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListState, Paragraph},
     Frame,
 };
+
+use crate::core;
 
 pub struct StatefulList<T> {
     pub state: ListState, // TODO: Make private
@@ -78,18 +81,29 @@ pub enum ExitContextResult {
 }
 
 pub struct AddBranchWidget {
+    project_path: String,
     all_branches: Vec<String>,
     add_branch_input: String,
     add_branch_autocomplete: StatefulList<String>,
 }
 
 impl AddBranchWidget {
-    pub fn new(all_branches: Vec<String>) -> AddBranchWidget {
+    pub fn new(project_path: String, all_branches: Vec<String>) -> AddBranchWidget {
         AddBranchWidget {
+            project_path,
             all_branches: all_branches.clone(),
             add_branch_input: String::new(),
             add_branch_autocomplete: StatefulList::with_items(all_branches),
         }
+    }
+
+    pub fn add_branch(&mut self) -> Result<()> {
+        let new_branch = self.get_branch_name();
+        if new_branch.is_empty() {
+            return Ok(());
+        }
+        core::add_branch(self.project_path.as_str(), new_branch)?;
+        Ok(())
     }
 
     pub fn update_autocomplete(&mut self) {
@@ -174,5 +188,91 @@ impl AddBranchWidget {
             .highlight_symbol(">> ");
 
         f.render_stateful_widget(list, chunks[1], &mut self.add_branch_autocomplete.state);
+    }
+}
+
+pub struct ChangeBranchesWidget {
+    project_path: String,
+    saved_branches: StatefulList<String>,
+}
+
+impl ChangeBranchesWidget {
+    pub fn new(project_path: String, saved_branches: Vec<String>) -> ChangeBranchesWidget {
+        ChangeBranchesWidget {
+            project_path,
+            saved_branches: StatefulList::with_items(saved_branches),
+        }
+    }
+
+    pub fn next(&mut self) {
+        self.saved_branches.next();
+    }
+
+    pub fn previous(&mut self) {
+        self.saved_branches.previous();
+    }
+
+    pub fn checkout_selected(&self) -> Result<()> {
+        let selected = self
+            .saved_branches
+            .selected()
+            .ok_or(anyhow!("no branch selected"))?;
+        let branch = self.saved_branches.items()[selected].as_str();
+        core::checkout(self.project_path.as_str(), branch)?;
+        Ok(())
+    }
+
+    pub fn remove_selected(&mut self) -> Result<()> {
+        let selected = self
+            .saved_branches
+            .selected()
+            .ok_or(anyhow!("no branch selected"))?;
+        let branch = self.saved_branches.items()[selected].clone();
+        core::remove_branch(self.project_path.as_str(), branch)?;
+        self.reload_saved_branches()?;
+        Ok(())
+    }
+
+    pub fn reload_saved_branches(&mut self) -> Result<()> {
+        self.saved_branches = StatefulList::with_items(
+            core::get_branches(self.project_path.as_str())?
+                .iter()
+                .map(|b| b.name.clone())
+                .collect::<Vec<String>>(),
+        );
+        Ok(())
+    }
+
+    pub fn draw(&mut self, f: &mut Frame, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(3)].as_ref())
+            .split(area);
+
+        let input = Paragraph::new(self.project_path.as_str()).block(
+            Block::default()
+                .title("Change branches")
+                .borders(Borders::ALL),
+        );
+
+        f.render_widget(input, chunks[0]);
+
+        let items = self
+            .saved_branches
+            .items
+            .iter()
+            .map(|b| Text::raw(b.as_str()))
+            .collect::<Vec<Text>>();
+
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title("Branches"))
+            .highlight_style(
+                Style::default()
+                    .bg(Color::LightGreen)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol(">> ");
+
+        f.render_stateful_widget(list, chunks[1], &mut self.saved_branches.state);
     }
 }
