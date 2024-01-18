@@ -4,3 +4,4 @@
 * Prevent checkout to current branch
 * Add example GIF to README.md
 * Remove leftover unwraps
+* Hook on post-checkout
