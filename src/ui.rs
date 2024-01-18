@@ -54,10 +54,35 @@ impl UI {
 
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => self.add_branches_widget.input_char(c),
-            Mode::Normal => self.change_branches_widget.input_char(c),
+            Mode::Input => {
+                self.add_branches_widget.input_char(c);
+                Ok(false)
+            }
+            Mode::Normal => match self.change_branches_widget.mode {
+                ChangeBranchesWidgetMode::Input => {
+                    self.change_branches_widget.input_char(c);
+                    Ok(false)
+                }
+                ChangeBranchesWidgetMode::Normal => match c {
+                    'q' => Ok(true),
+                    'a' => {
+                        self.mode = Mode::Input;
+                        Ok(false)
+                    }
+                    '?' => {
+                        self.change_branches_widget.mode = ChangeBranchesWidgetMode::Input;
+                        Ok(false)
+                    }
+                    'j' => self.on_down(),
+                    'k' => self.on_up(),
+                    'r' => {
+                        self.change_branches_widget.remove_selected()?;
+                        Ok(false)
+                    }
+                    _ => Ok(false),
+                },
+            },
         }
-        Ok(false)
     }
 
     fn on_backspace(&mut self) -> Result<ShouldExit> {
@@ -118,14 +143,6 @@ impl UI {
         }
         Ok(false)
     }
-
-    fn on_remove_branch(&mut self) -> Result<ShouldExit> {
-        match self.mode {
-            Mode::Input => {}
-            Mode::Normal => self.change_branches_widget.remove_selected()?,
-        }
-        Ok(false)
-    }
 }
 
 pub fn start_ui(project: Project, branches: Vec<String>) -> Result<()> {
@@ -182,43 +199,14 @@ fn run_ui<B: Backend + Write>(
 fn handle_input(app: &mut UI) -> Result<ShouldExit> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
-            return match app.mode {
-                Mode::Input => match key.code {
-                    KeyCode::Esc => app.on_esc(),
-                    KeyCode::Enter => app.on_enter(),
-                    KeyCode::Char(c) => app.on_char(c),
-                    KeyCode::Backspace => app.on_backspace(),
-                    KeyCode::Down => app.on_down(),
-                    KeyCode::Up => app.on_up(),
-                    _ => Ok(false),
-                },
-                Mode::Normal => match app.change_branches_widget.mode {
-                    ChangeBranchesWidgetMode::Normal => match key.code {
-                        KeyCode::Char('q') => Ok(true),
-                        KeyCode::Char('a') => {
-                            app.mode = Mode::Input;
-                            Ok(false)
-                        }
-                        KeyCode::Char('?') => {
-                            app.change_branches_widget.mode = ChangeBranchesWidgetMode::Input;
-                            Ok(false)
-                        }
-                        KeyCode::Down | KeyCode::Char('j') => app.on_down(),
-                        KeyCode::Up | KeyCode::Char('k') => app.on_up(),
-                        KeyCode::Char('r') => app.on_remove_branch(),
-                        KeyCode::Enter => app.on_enter(),
-                        _ => Ok(false),
-                    },
-                    ChangeBranchesWidgetMode::Input => match key.code {
-                        KeyCode::Esc => app.on_esc(),
-                        KeyCode::Enter => app.on_enter(),
-                        KeyCode::Char(c) => app.on_char(c),
-                        KeyCode::Backspace => app.on_backspace(),
-                        KeyCode::Down => app.on_down(),
-                        KeyCode::Up => app.on_up(),
-                        _ => Ok(false),
-                    },
-                },
+            return match key.code {
+                KeyCode::Esc => app.on_esc(),
+                KeyCode::Enter => app.on_enter(),
+                KeyCode::Char(c) => app.on_char(c),
+                KeyCode::Backspace => app.on_backspace(),
+                KeyCode::Down => app.on_down(),
+                KeyCode::Up => app.on_up(),
+                _ => Ok(false),
             };
         }
     }
