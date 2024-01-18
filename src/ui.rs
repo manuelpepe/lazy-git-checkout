@@ -17,7 +17,7 @@ use ratatui::{
 
 use crate::{
     core::Project,
-    widgets::{AddBranchWidget, ChangeBranchesWidget, ExitContextResult},
+    widgets::{AddBranchWidget, ChangeBranchesWidget, ChangeBranchesWidgetMode, ExitContextResult},
 };
 
 type ShouldExit = bool;
@@ -55,7 +55,7 @@ impl UI {
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
         match self.mode {
             Mode::Input => self.add_branches_widget.input_char(c),
-            Mode::Normal => {}
+            Mode::Normal => self.change_branches_widget.input_char(c),
         }
         Ok(false)
     }
@@ -63,7 +63,7 @@ impl UI {
     fn on_backspace(&mut self) -> Result<ShouldExit> {
         match self.mode {
             Mode::Input => self.add_branches_widget.remove_char(),
-            Mode::Normal => {}
+            Mode::Normal => self.change_branches_widget.remove_char(),
         }
         Ok(false)
     }
@@ -84,12 +84,22 @@ impl UI {
     }
 
     fn on_esc(&mut self) -> Result<ShouldExit> {
-        match self.add_branches_widget.exit_context() {
-            ExitContextResult::Exit => {
-                self.mode = Mode::Normal;
-            }
-            ExitContextResult::Continue => {}
+        match self.mode {
+            Mode::Input => match self.add_branches_widget.exit_context() {
+                ExitContextResult::Exit => {
+                    self.mode = Mode::Normal;
+                }
+                ExitContextResult::Continue => {}
+            },
+            Mode::Normal => match self.change_branches_widget.mode {
+                ChangeBranchesWidgetMode::Normal => return Ok(false),
+                ChangeBranchesWidgetMode::Input => {
+                    self.change_branches_widget.mode = ChangeBranchesWidgetMode::Normal;
+                    self.change_branches_widget.clear_input();
+                }
+            },
         }
+
         Ok(false)
     }
 
@@ -182,17 +192,32 @@ fn handle_input(app: &mut UI) -> Result<ShouldExit> {
                     KeyCode::Up => app.on_up(),
                     _ => Ok(false),
                 },
-                Mode::Normal => match key.code {
-                    KeyCode::Char('q') => Ok(true),
-                    KeyCode::Char('a') => {
-                        app.mode = Mode::Input;
-                        Ok(false)
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => app.on_down(),
-                    KeyCode::Up | KeyCode::Char('k') => app.on_up(),
-                    KeyCode::Char('r') => app.on_remove_branch(),
-                    KeyCode::Enter => app.on_enter(),
-                    _ => Ok(false),
+                Mode::Normal => match app.change_branches_widget.mode {
+                    ChangeBranchesWidgetMode::Normal => match key.code {
+                        KeyCode::Char('q') => Ok(true),
+                        KeyCode::Char('a') => {
+                            app.mode = Mode::Input;
+                            Ok(false)
+                        }
+                        KeyCode::Char('?') => {
+                            app.change_branches_widget.mode = ChangeBranchesWidgetMode::Input;
+                            Ok(false)
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => app.on_down(),
+                        KeyCode::Up | KeyCode::Char('k') => app.on_up(),
+                        KeyCode::Char('r') => app.on_remove_branch(),
+                        KeyCode::Enter => app.on_enter(),
+                        _ => Ok(false),
+                    },
+                    ChangeBranchesWidgetMode::Input => match key.code {
+                        KeyCode::Esc => app.on_esc(),
+                        KeyCode::Enter => app.on_enter(),
+                        KeyCode::Char(c) => app.on_char(c),
+                        KeyCode::Backspace => app.on_backspace(),
+                        KeyCode::Down => app.on_down(),
+                        KeyCode::Up => app.on_up(),
+                        _ => Ok(false),
+                    },
                 },
             };
         }

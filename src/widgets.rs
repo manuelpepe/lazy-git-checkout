@@ -27,6 +27,10 @@ impl<T> StatefulList<T> {
         self.state.select(Some(0));
     }
 
+    pub fn select(&mut self, i: Option<usize>) {
+        self.state.select(i);
+    }
+
     pub fn next(&mut self) {
         if self.items.is_empty() {
             return;
@@ -186,16 +190,25 @@ impl AddBranchWidget {
     }
 }
 
+pub enum ChangeBranchesWidgetMode {
+    Normal,
+    Input,
+}
+
 pub struct ChangeBranchesWidget {
+    pub mode: ChangeBranchesWidgetMode,
     project_path: String,
     saved_branches: StatefulList<String>,
+    input: String,
 }
 
 impl ChangeBranchesWidget {
     pub fn new(project_path: String, saved_branches: Vec<String>) -> ChangeBranchesWidget {
         ChangeBranchesWidget {
+            mode: ChangeBranchesWidgetMode::Normal,
             project_path,
             saved_branches: StatefulList::with_items(saved_branches),
+            input: String::new(),
         }
     }
 
@@ -205,6 +218,31 @@ impl ChangeBranchesWidget {
 
     pub fn previous(&mut self) {
         self.saved_branches.previous();
+    }
+
+    pub fn input_char(&mut self, c: char) {
+        if let ChangeBranchesWidgetMode::Input = self.mode {
+            self.input.push(c);
+            let found_ix = self
+                .saved_branches
+                .items
+                .iter()
+                .enumerate()
+                .filter(|&(_, b)| b.starts_with(self.input.as_str()))
+                .map(|(i, _)| i)
+                .next();
+            self.saved_branches.select(found_ix)
+        }
+    }
+
+    pub fn remove_char(&mut self) {
+        if let ChangeBranchesWidgetMode::Input = self.mode {
+            self.input.pop();
+        }
+    }
+
+    pub fn clear_input(&mut self) {
+        self.input.clear();
     }
 
     pub fn checkout_selected(&self) -> Result<()> {
@@ -244,11 +282,15 @@ impl ChangeBranchesWidget {
             .constraints([Constraint::Length(3), Constraint::Min(3)].as_ref())
             .split(area);
 
-        let input = Paragraph::new(self.project_path.as_str()).block(
-            Block::default()
-                .title("Change branches")
-                .borders(Borders::ALL),
-        );
+        let input = match self.mode {
+            ChangeBranchesWidgetMode::Normal => Paragraph::new(self.project_path.as_str()).block(
+                Block::default()
+                    .title("Change branches")
+                    .borders(Borders::ALL),
+            ),
+            ChangeBranchesWidgetMode::Input => Paragraph::new(self.input.as_str())
+                .block(Block::default().title("searching").borders(Borders::ALL)),
+        };
 
         f.render_widget(input, chunks[0]);
 
