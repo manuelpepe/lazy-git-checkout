@@ -2,3 +2,41 @@
 
 Small program for quickly switching between branches, stashing and unstaging your last changes.
 
+## Installing
+
+```bash
+git clone https://github.com/manuelpepe/lazy-git-checkout.git
+cd lazy-git-checkout
+cargo install --path .
+```
+
+Make sure to have cargo's bin directory in your PATH.
+Additionally alias for easier access:
+
+```bash
+alias lg=lazy-git-checkout
+```
+
+## Usage
+
+```bash
+$ lazy-git-commit -A .  # add project in current directory
+$ lazy-git-commit       # launch ui
+```
+
+### Keybinds:
+
+| Key       | Mode: Checkout                    | Mode: Search        | Mode: Add                        |
+|-----------|-----------------------------------|---------------------|----------------------------------|
+| ESC       | n/a                               | Set Mode: Checkout  | Set Mode: Checkout               |
+| Enter     | Checkout to branch                | Checkout to branch  | Add branch to lgc known branches |
+| Backspace | Delete char                       | Delete char         | Delete char                      |
+| ArrUp     | Move selection up                 | Move selection up   | Move selection up                |
+| ArrDown   | Move selection down               | Move selection down | Move selection up                |
+| q         | Exit app                          |                     |                                  |
+| a         | Set Mode: Add                     |                     |                                  |
+| ?         | Set Mode: Search                  |                     |                                  |
+| r         | Remove branch from known branches |                     |                                  |
+| k         | Move selection up                 |                     |                                  |
+| j         | Move selection down               |                     |                                  |
+
