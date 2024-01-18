@@ -20,6 +20,13 @@ use crate::{
     widgets::{AddBranchWidget, ChangeBranchesWidget, ChangeBranchesWidgetMode, ExitContextResult},
 };
 
+macro_rules! continue_after {
+    ($expr:expr) => {{
+        $expr;
+        Ok(false)
+    }};
+}
+
 type ShouldExit = bool;
 
 enum Mode {
@@ -54,31 +61,20 @@ impl UI {
 
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Add => {
-                self.add_branches_widget.input_char(c);
-                Ok(false)
-            }
+            Mode::Add => continue_after!(self.add_branches_widget.input_char(c)),
             Mode::Checkout => match self.change_branches_widget.mode {
                 ChangeBranchesWidgetMode::Search => {
-                    self.change_branches_widget.input_char(c);
-                    Ok(false)
+                    continue_after!(self.change_branches_widget.input_char(c))
                 }
                 ChangeBranchesWidgetMode::Normal => match c {
                     'q' => Ok(true),
-                    'a' => {
-                        self.mode = Mode::Add;
-                        Ok(false)
-                    }
-                    '?' => {
-                        self.change_branches_widget.mode = ChangeBranchesWidgetMode::Search;
-                        Ok(false)
-                    }
+                    'a' => continue_after!(self.mode = Mode::Add),
+                    '?' => continue_after!(
+                        self.change_branches_widget.mode = ChangeBranchesWidgetMode::Search
+                    ),
                     'j' => self.on_down(),
                     'k' => self.on_up(),
-                    'r' => {
-                        self.change_branches_widget.remove_selected()?;
-                        Ok(false)
-                    }
+                    'r' => continue_after!(self.change_branches_widget.remove_selected()?),
                     _ => Ok(false),
                 },
             },
