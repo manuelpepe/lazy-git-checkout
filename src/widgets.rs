@@ -192,7 +192,7 @@ impl AddBranchWidget {
 
 pub enum ChangeBranchesWidgetMode {
     Normal,
-    Input,
+    Search,
 }
 
 pub struct ChangeBranchesWidget {
@@ -221,7 +221,7 @@ impl ChangeBranchesWidget {
     }
 
     pub fn input_char(&mut self, c: char) {
-        if let ChangeBranchesWidgetMode::Input = self.mode {
+        if let ChangeBranchesWidgetMode::Search = self.mode {
             self.input.push(c);
             let found_ix = self
                 .saved_branches
@@ -236,7 +236,7 @@ impl ChangeBranchesWidget {
     }
 
     pub fn remove_char(&mut self) {
-        if let ChangeBranchesWidgetMode::Input = self.mode {
+        if let ChangeBranchesWidgetMode::Search = self.mode {
             self.input.pop();
         }
     }
@@ -288,7 +288,7 @@ impl ChangeBranchesWidget {
                     .title("Change branches")
                     .borders(Borders::ALL),
             ),
-            ChangeBranchesWidgetMode::Input => Paragraph::new(self.input.as_str())
+            ChangeBranchesWidgetMode::Search => Paragraph::new(self.input.as_str())
                 .block(Block::default().title("searching").borders(Borders::ALL)),
         };
 

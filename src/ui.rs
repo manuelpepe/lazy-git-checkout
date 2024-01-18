@@ -23,8 +23,8 @@ use crate::{
 type ShouldExit = bool;
 
 enum Mode {
-    Normal,
-    Input,
+    Checkout,
+    Add,
 }
 
 struct UI {
@@ -43,7 +43,7 @@ impl UI {
             .collect::<Vec<String>>();
 
         UI {
-            mode: Mode::Normal,
+            mode: Mode::Checkout,
             change_branches_widget: ChangeBranchesWidget::new(
                 project.path.clone(),
                 saved_branches.clone(),
@@ -54,23 +54,23 @@ impl UI {
 
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => {
+            Mode::Add => {
                 self.add_branches_widget.input_char(c);
                 Ok(false)
             }
-            Mode::Normal => match self.change_branches_widget.mode {
-                ChangeBranchesWidgetMode::Input => {
+            Mode::Checkout => match self.change_branches_widget.mode {
+                ChangeBranchesWidgetMode::Search => {
                     self.change_branches_widget.input_char(c);
                     Ok(false)
                 }
                 ChangeBranchesWidgetMode::Normal => match c {
                     'q' => Ok(true),
                     'a' => {
-                        self.mode = Mode::Input;
+                        self.mode = Mode::Add;
                         Ok(false)
                     }
                     '?' => {
-                        self.change_branches_widget.mode = ChangeBranchesWidgetMode::Input;
+                        self.change_branches_widget.mode = ChangeBranchesWidgetMode::Search;
                         Ok(false)
                     }
                     'j' => self.on_down(),
@@ -87,21 +87,21 @@ impl UI {
 
     fn on_backspace(&mut self) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => self.add_branches_widget.remove_char(),
-            Mode::Normal => self.change_branches_widget.remove_char(),
+            Mode::Add => self.add_branches_widget.remove_char(),
+            Mode::Checkout => self.change_branches_widget.remove_char(),
         }
         Ok(false)
     }
 
     fn on_enter(&mut self) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => {
+            Mode::Add => {
                 self.add_branches_widget.add_branch()?;
                 self.change_branches_widget.reload_saved_branches()?;
-                self.mode = Mode::Normal;
+                self.mode = Mode::Checkout;
                 Ok(false)
             }
-            Mode::Normal => {
+            Mode::Checkout => {
                 self.change_branches_widget.checkout_selected()?;
                 Ok(true)
             }
@@ -110,15 +110,15 @@ impl UI {
 
     fn on_esc(&mut self) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => match self.add_branches_widget.exit_context() {
+            Mode::Add => match self.add_branches_widget.exit_context() {
                 ExitContextResult::Exit => {
-                    self.mode = Mode::Normal;
+                    self.mode = Mode::Checkout;
                 }
                 ExitContextResult::Continue => {}
             },
-            Mode::Normal => match self.change_branches_widget.mode {
+            Mode::Checkout => match self.change_branches_widget.mode {
                 ChangeBranchesWidgetMode::Normal => return Ok(false),
-                ChangeBranchesWidgetMode::Input => {
+                ChangeBranchesWidgetMode::Search => {
                     self.change_branches_widget.mode = ChangeBranchesWidgetMode::Normal;
                     self.change_branches_widget.clear_input();
                 }
@@ -130,16 +130,16 @@ impl UI {
 
     fn on_up(&mut self) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => self.add_branches_widget.previous(),
-            Mode::Normal => self.change_branches_widget.previous(),
+            Mode::Add => self.add_branches_widget.previous(),
+            Mode::Checkout => self.change_branches_widget.previous(),
         }
         Ok(false)
     }
 
     fn on_down(&mut self) -> Result<ShouldExit> {
         match self.mode {
-            Mode::Input => self.add_branches_widget.next(),
-            Mode::Normal => self.change_branches_widget.next(),
+            Mode::Add => self.add_branches_widget.next(),
+            Mode::Checkout => self.change_branches_widget.next(),
         }
         Ok(false)
     }
@@ -219,7 +219,7 @@ fn draw(f: &mut Frame, app: &mut UI) {
         .split(f.size())[0];
 
     match app.mode {
-        Mode::Input => app.add_branches_widget.draw(f, screen),
-        Mode::Normal => app.change_branches_widget.draw(f, screen),
+        Mode::Add => app.add_branches_widget.draw(f, screen),
+        Mode::Checkout => app.change_branches_widget.draw(f, screen),
     }
 }
