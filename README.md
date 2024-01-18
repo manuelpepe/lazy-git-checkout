@@ -2,6 +2,19 @@
 
 Small program for quickly switching between branches, stashing and unstaging your last changes.
 
+Changing branches with lgc is similar to doing:
+
+```bash
+git stash -m $CUR_BRANCH
+git checkout $NEXT_BRANCH
+git stash pop $LAST_NEXT_BRANCH_STASH_REF
+```
+
+but with _hopefully_ fewer keystrokes.
+
+It also allows you to track your most used branches to avoid any `git branch | grep ...`
+
+
 ## Installing
 
 ```bash
