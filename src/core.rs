@@ -146,6 +146,23 @@ pub fn get_branches(path: &str) -> Result<Vec<Branch>> {
     }
 }
 
+pub fn set_branches(path: &str, branches: Vec<&str>) -> Result<()> {
+    let mut db = DB::load_from_disk()?;
+    let project = db.projects.iter_mut().find(|p| path == p.path.as_str());
+    if let Some(project) = project {
+        project.branches = branches
+            .iter()
+            .map(|b| Branch {
+                name: b.to_string(),
+            })
+            .collect::<Vec<Branch>>();
+    } else {
+        return Err(anyhow!("no project found in path"));
+    }
+    db.write_to_disk()?;
+    Ok(())
+}
+
 pub fn list_projects() -> Result<()> {
     let db = DB::load_from_disk()?;
     for project in &db.projects {

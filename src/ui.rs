@@ -74,6 +74,8 @@ impl UI {
                     ),
                     'j' => self.on_down(),
                     'k' => self.on_up(),
+                    'J' => continue_after!(self.change_branches_widget.swap_down()?),
+                    'K' => continue_after!(self.change_branches_widget.swap_up()?),
                     'r' => continue_after!(self.change_branches_widget.remove_selected()?),
                     _ => Ok(false),
                 },

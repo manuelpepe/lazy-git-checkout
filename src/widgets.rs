@@ -72,6 +72,44 @@ impl<T> StatefulList<T> {
     pub fn items(&self) -> &Vec<T> {
         &self.items
     }
+
+    pub fn swap_down(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let (cur, next) = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.len() - 1 {
+                    (i, 0)
+                } else {
+                    (i, i + 1)
+                }
+            }
+            None => return,
+        };
+        let item = self.items.remove(cur);
+        self.items.insert(next, item);
+        self.state.select(Some(next));
+    }
+
+    pub fn swap_up(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let (cur, next) = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    (i, self.items.len() - 1)
+                } else {
+                    (i, i - 1)
+                }
+            }
+            None => return,
+        };
+        let item = self.items.remove(cur);
+        self.items.insert(next, item);
+        self.state.select(Some(next));
+    }
 }
 
 pub enum ExitContextResult {
@@ -218,6 +256,30 @@ impl ChangeBranchesWidget {
 
     pub fn previous(&mut self) {
         self.saved_branches.previous();
+    }
+
+    pub fn swap_down(&mut self) -> Result<()> {
+        self.saved_branches.swap_down();
+        core::set_branches(
+            self.project_path.as_str(),
+            self.saved_branches
+                .items()
+                .iter()
+                .map(|b| b.as_str())
+                .collect::<Vec<&str>>(),
+        )
+    }
+
+    pub fn swap_up(&mut self) -> Result<()> {
+        self.saved_branches.swap_up();
+        core::set_branches(
+            self.project_path.as_str(),
+            self.saved_branches
+                .items()
+                .iter()
+                .map(|b| b.as_str())
+                .collect::<Vec<&str>>(),
+        )
     }
 
     pub fn input_char(&mut self, c: char) {

@@ -41,7 +41,7 @@ $ lazy-git-commit       # launch ui
 
 | Key       | Mode: Checkout                    | Mode: Search        | Mode: Add                        |
 |-----------|-----------------------------------|---------------------|----------------------------------|
-| ESC       | n/a                               | Set Mode: Checkout  | Set Mode: Checkout               |
+| ESC       | N/A                               | Set Mode: Checkout  | Set Mode: Checkout               |
 | Enter     | Checkout to branch                | Checkout to branch  | Add branch to lgc known branches |
 | Backspace | Delete char                       | Delete char         | Delete char                      |
 | ArrUp     | Move selection up                 | Move selection up   | Move selection up                |
@@ -52,4 +52,6 @@ $ lazy-git-commit       # launch ui
 | r         | Remove branch from known branches |                     |                                  |
 | k         | Move selection up                 |                     |                                  |
 | j         | Move selection down               |                     |                                  |
+| K         | Swap selection up                 |                     |                                  |
+| J         | Swap selection down               | N/A                 | N/A                              |
 
