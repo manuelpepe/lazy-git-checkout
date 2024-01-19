@@ -319,6 +319,9 @@ impl ChangeBranchesWidget {
             .selected()
             .ok_or(anyhow!("no branch selected"))?;
         let branch = self.saved_branches.items()[selected].as_str();
+        if branch == self.cur_branch {
+            return Ok(());
+        }
         core::checkout(self.project_path.as_str(), branch)?;
         Ok(())
     }
