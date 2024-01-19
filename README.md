@@ -39,19 +39,21 @@ $ lazy-git-commit       # launch ui
 
 ### Keybinds:
 
-| Key       | Mode: Checkout                    | Mode: Search        | Mode: Add                        |
-|-----------|-----------------------------------|---------------------|----------------------------------|
-| ESC       | N/A                               | Set Mode: Checkout  | Set Mode: Checkout               |
-| Enter     | Checkout to branch                | Checkout to branch  | Add branch to lgc known branches |
-| Backspace | Delete char                       | Delete char         | Delete char                      |
-| ArrUp     | Move selection up                 | Move selection up   | Move selection up                |
-| ArrDown   | Move selection down               | Move selection down | Move selection up                |
-| q         | Exit app                          |                     |                                  |
-| a         | Set Mode: Add                     |                     |                                  |
-| ?         | Set Mode: Search                  |                     |                                  |
-| r         | Remove branch from known branches |                     |                                  |
-| k         | Move selection up                 |                     |                                  |
-| j         | Move selection down               |                     |                                  |
-| K         | Swap selection up                 |                     |                                  |
-| J         | Swap selection down               | N/A                 | N/A                              |
+| Key           | Mode: Checkout                    | Mode: Search        | Mode: Add                        |
+|---------------|-----------------------------------|---------------------|----------------------------------|
+| ESC           |                                   | Set Mode: Checkout  | Set Mode: Checkout               |
+| Enter         | Checkout to branch                | Checkout to branch  | Add branch to lgc known branches |
+| Backspace     | Delete char                       | Delete char         | Delete char                      |
+| ArrUp         | Move selection up                 | Move selection up   | Move selection up                |
+| Shift+ArrUp   | Swap selection up                 | Move selection up   | Move selection up                |
+| ArrDown       | Move selection down               |                     |                                  |
+| Shift+ArrDown | Swap selection down               |                     |                                  |
+| q             | Exit app                          |                     |                                  |
+| a             | Set Mode: Add                     |                     |                                  |
+| ?             | Set Mode: Search                  |                     |                                  |
+| r             | Remove branch from known branches |                     |                                  |
+| k             | Move selection up                 |                     |                                  |
+| j             | Move selection down               |                     |                                  |
+| K             | Swap selection up                 |                     |                                  |
+| J             | Swap selection down               |                     |                                  |
 

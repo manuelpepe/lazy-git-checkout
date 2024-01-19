@@ -23,7 +23,7 @@ use crate::{
 macro_rules! continue_after {
     ($expr:expr) => {{
         $expr;
-        Ok(false)
+        return Ok(false);
     }};
 }
 
@@ -141,6 +141,24 @@ impl UI {
         }
         Ok(false)
     }
+
+    fn on_shift_up(&mut self) -> Result<ShouldExit> {
+        if let Mode::Checkout = self.mode {
+            if let ChangeBranchesWidgetMode::Normal = self.change_branches_widget.mode {
+                continue_after!(self.change_branches_widget.swap_up()?);
+            }
+        }
+        Ok(false)
+    }
+
+    fn on_shift_down(&mut self) -> Result<ShouldExit> {
+        if let Mode::Checkout = self.mode {
+            if let ChangeBranchesWidgetMode::Normal = self.change_branches_widget.mode {
+                continue_after!(self.change_branches_widget.swap_down()?);
+            }
+        }
+        Ok(false)
+    }
 }
 
 pub fn start_ui(project: Project, branches: Vec<String>) -> Result<()> {
@@ -197,14 +215,23 @@ fn run_ui<B: Backend + Write>(
 fn handle_input(app: &mut UI) -> Result<ShouldExit> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
-            return match key.code {
-                KeyCode::Esc => app.on_esc(),
-                KeyCode::Enter => app.on_enter(),
-                KeyCode::Char(c) => app.on_char(c),
-                KeyCode::Backspace => app.on_backspace(),
-                KeyCode::Down => app.on_down(),
-                KeyCode::Up => app.on_up(),
-                _ => Ok(false),
+            return if key.modifiers == crossterm::event::KeyModifiers::SHIFT {
+                match key.code {
+                    KeyCode::Up => app.on_shift_up(),
+                    KeyCode::Down => app.on_shift_down(),
+                    KeyCode::Char(c) => app.on_char(c),
+                    _ => Ok(false),
+                }
+            } else {
+                match key.code {
+                    KeyCode::Esc => app.on_esc(),
+                    KeyCode::Enter => app.on_enter(),
+                    KeyCode::Char(c) => app.on_char(c),
+                    KeyCode::Backspace => app.on_backspace(),
+                    KeyCode::Down => app.on_down(),
+                    KeyCode::Up => app.on_up(),
+                    _ => Ok(false),
+                }
             };
         }
     }
