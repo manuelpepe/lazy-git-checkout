@@ -238,15 +238,21 @@ pub struct ChangeBranchesWidget {
     project_path: String,
     saved_branches: StatefulList<String>,
     input: String,
+    cur_branch: String,
 }
 
 impl ChangeBranchesWidget {
-    pub fn new(project_path: String, saved_branches: Vec<String>) -> ChangeBranchesWidget {
+    pub fn new(
+        project_path: String,
+        saved_branches: Vec<String>,
+        cur_branch: String,
+    ) -> ChangeBranchesWidget {
         ChangeBranchesWidget {
             mode: ChangeBranchesWidgetMode::Normal,
             project_path,
             saved_branches: StatefulList::with_items(saved_branches),
             input: String::new(),
+            cur_branch,
         }
     }
 
@@ -360,7 +366,13 @@ impl ChangeBranchesWidget {
             .saved_branches
             .items
             .iter()
-            .map(|b| Text::raw(b.as_str()))
+            .map(|b| {
+                if *b == self.cur_branch {
+                    Text::styled(format!("{b} *"), Style::default().fg(Color::LightGreen))
+                } else {
+                    Text::raw(b)
+                }
+            })
             .collect::<Vec<Text>>();
 
         let list = List::new(items)

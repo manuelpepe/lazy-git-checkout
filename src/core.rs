@@ -175,9 +175,7 @@ pub fn list_projects() -> Result<()> {
 }
 
 pub fn checkout(path: &str, branch: &str) -> Result<()> {
-    let cur_branch = String::from_utf8(
-        run_git_command(path, vec!["rev-parse", "--abbrev-ref", "HEAD"])?.stdout,
-    )?;
+    let cur_branch = get_current_branch(path)?;
     let stash_name = format!("lazy-git-checkout:{}", cur_branch);
     run_git_command(path, vec!["stash", "-m", stash_name.as_str()])?;
     run_git_command(path, vec!["checkout", branch])?;
@@ -200,6 +198,12 @@ pub fn all_project_branches(path: &str) -> Result<Vec<String>> {
         .map(|b| b.to_string())
         .collect::<Vec<String>>();
     Ok(branches)
+}
+
+pub fn get_current_branch(path: &str) -> Result<String> {
+    let output = run_git_command(path, vec!["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let branch = String::from_utf8(output.stdout)?;
+    Ok(branch.trim().to_string())
 }
 
 fn run_git_command(path: &str, command: Vec<&str>) -> Result<Output> {

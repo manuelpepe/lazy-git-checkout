@@ -42,7 +42,7 @@ struct UI {
 }
 
 impl UI {
-    fn new(project: &Project, all_branches: Vec<String>) -> UI {
+    fn new(project: &Project, all_branches: Vec<String>, cur_branch: String) -> UI {
         let saved_branches = project
             .branches
             .iter()
@@ -54,6 +54,7 @@ impl UI {
             change_branches_widget: ChangeBranchesWidget::new(
                 project.path.clone(),
                 saved_branches.clone(),
+                cur_branch,
             ),
             add_branches_widget: AddBranchWidget::new(project.path.clone(), all_branches.clone()),
         }
@@ -161,7 +162,7 @@ impl UI {
     }
 }
 
-pub fn start_ui(project: Project, branches: Vec<String>) -> Result<()> {
+pub fn start_ui(project: Project, branches: Vec<String>, cur_branch: String) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -170,7 +171,7 @@ pub fn start_ui(project: Project, branches: Vec<String>) -> Result<()> {
 
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = UI::new(&project, branches);
+    let app = UI::new(&project, branches, cur_branch);
     let res = run_ui(&mut terminal, app, tick_rate);
 
     // restore terminal

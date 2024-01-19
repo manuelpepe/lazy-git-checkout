@@ -31,7 +31,8 @@ fn main() -> Result<()> {
     } else {
         let proj = cur_project()?;
         let branches = core::all_project_branches(proj.path.as_str())?;
-        ui::start_ui(proj, branches)?;
+        let cur_branch = core::get_current_branch(proj.path.as_str())?;
+        ui::start_ui(proj, branches, cur_branch)?;
     }
 
     Ok(())
