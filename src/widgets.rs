@@ -239,21 +239,23 @@ pub struct ChangeBranchesWidget {
     saved_branches: StatefulList<String>,
     input: String,
     cur_branch: String,
+    git: core::Git,
 }
 
 impl ChangeBranchesWidget {
     pub fn new(
         project_path: String,
         saved_branches: Vec<String>,
-        cur_branch: String,
-    ) -> ChangeBranchesWidget {
-        ChangeBranchesWidget {
+        git: core::Git,
+    ) -> Result<ChangeBranchesWidget> {
+        Ok(ChangeBranchesWidget {
             mode: ChangeBranchesWidgetMode::Normal,
             project_path,
             saved_branches: StatefulList::with_items(saved_branches),
             input: String::new(),
-            cur_branch,
-        }
+            cur_branch: git.get_current_branch()?,
+            git,
+        })
     }
 
     pub fn next(&mut self) {
@@ -322,7 +324,7 @@ impl ChangeBranchesWidget {
         if branch == self.cur_branch {
             return Ok(());
         }
-        core::checkout(self.project_path.as_str(), branch)?;
+        self.git.checkout(branch)?;
         Ok(())
     }
 

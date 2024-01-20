@@ -14,7 +14,8 @@ fn main() -> Result<()> {
 
     if let Some(branch) = args.checkout {
         let proj = cur_project()?;
-        core::checkout(proj.path.as_str(), branch.as_str())?;
+        let git = core::Git::new(proj.path);
+        git.checkout(branch.as_str())?;
     } else if let Some(branch) = args.add {
         let proj = cur_project()?;
         core::add_branch(proj.path.as_str(), branch)?;
@@ -30,9 +31,8 @@ fn main() -> Result<()> {
         core::list_projects()?;
     } else {
         let proj = cur_project()?;
-        let branches = core::all_project_branches(proj.path.as_str())?;
-        let cur_branch = core::get_current_branch(proj.path.as_str())?;
-        ui::start_ui(proj, branches, cur_branch)?;
+        let git: core::Git = core::Git::new(proj.path.clone());
+        ui::start_ui(proj, git)?;
     }
 
     Ok(())

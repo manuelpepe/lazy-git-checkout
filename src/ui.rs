@@ -16,7 +16,7 @@ use ratatui::{
 };
 
 use crate::{
-    core::Project,
+    core::{self, Project},
     widgets::{AddBranchWidget, ChangeBranchesWidget, ChangeBranchesWidgetMode, ExitContextResult},
 };
 
@@ -42,22 +42,23 @@ struct UI {
 }
 
 impl UI {
-    fn new(project: &Project, all_branches: Vec<String>, cur_branch: String) -> UI {
+    fn new(project: &Project, git: core::Git) -> Result<UI> {
+        let branches = git.all_project_branches()?;
         let saved_branches = project
             .branches
             .iter()
             .map(|b| b.name.clone())
             .collect::<Vec<String>>();
 
-        UI {
+        Ok(UI {
             mode: Mode::Checkout,
             change_branches_widget: ChangeBranchesWidget::new(
                 project.path.clone(),
                 saved_branches.clone(),
-                cur_branch,
-            ),
-            add_branches_widget: AddBranchWidget::new(project.path.clone(), all_branches.clone()),
-        }
+                git,
+            )?,
+            add_branches_widget: AddBranchWidget::new(project.path.clone(), branches),
+        })
     }
 
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
@@ -162,7 +163,7 @@ impl UI {
     }
 }
 
-pub fn start_ui(project: Project, branches: Vec<String>, cur_branch: String) -> Result<()> {
+pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -171,7 +172,7 @@ pub fn start_ui(project: Project, branches: Vec<String>, cur_branch: String) -> 
 
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = UI::new(&project, branches, cur_branch);
+    let app = UI::new(&project, git)?;
     let res = run_ui(&mut terminal, app, tick_rate);
 
     // restore terminal

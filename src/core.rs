@@ -104,6 +104,72 @@ impl DB {
     }
 }
 
+pub struct Git {
+    pub path: String,
+}
+
+impl Git {
+    pub fn new(path: String) -> Git {
+        Git { path }
+    }
+
+    pub fn checkout(&self, branch: &str) -> Result<()> {
+        let cur_branch = self.get_current_branch()?;
+        let stash_name = format!("lazy-git-checkout:{}", cur_branch);
+        self.run_git_command(vec!["stash", "-m", stash_name.as_str()])?;
+        self.run_git_command(vec!["checkout", branch])?;
+        let last_stashed = self.get_last_stashed(branch);
+        if let Some(last_stashed) = last_stashed {
+            self.run_git_command(vec!["stash", "pop", last_stashed.as_ref()])?;
+        }
+        Ok(())
+    }
+
+    pub fn all_project_branches(&self) -> Result<Vec<String>> {
+        let output = self.run_git_command(vec!["branch", "-a"])?;
+        let branches = String::from_utf8(output.stdout)?;
+        let branches = branches.split('\n');
+        let branches = branches
+            .map(|b| b.trim())
+            .filter(|b| !b.is_empty())
+            .map(|b| b.trim_start_matches('*'))
+            .map(|b| b.trim())
+            .map(|b| b.to_string())
+            .collect::<Vec<String>>();
+        Ok(branches)
+    }
+
+    pub fn get_current_branch(&self) -> Result<String> {
+        let output = self.run_git_command(vec!["rev-parse", "--abbrev-ref", "HEAD"])?;
+        let branch = String::from_utf8(output.stdout)?;
+        Ok(branch.trim().to_string())
+    }
+
+    fn run_git_command(&self, command: Vec<&str>) -> Result<Output> {
+        let output = std::process::Command::new("git")
+            .args(command)
+            .current_dir(self.path.as_str())
+            .output()?;
+        if !output.status.success() {
+            let error = String::from_utf8(output.stderr)?;
+            return Err(anyhow::anyhow!(error));
+        }
+        Ok(output)
+    }
+
+    fn get_last_stashed(&self, branch: &str) -> Option<String> {
+        let output = self.run_git_command(vec!["stash", "list"]).unwrap();
+        let stashes = String::from_utf8(output.stdout).unwrap();
+        let stashes = stashes.split('\n');
+        let stash_name = format!("lazy-git-checkout:{}", branch);
+        let stashes = stashes.filter(|s| s.contains(stash_name.as_str()));
+        let stashes = stashes.collect::<Vec<&str>>();
+        let last_stash = stashes.first()?;
+        let last_stash = last_stash.split(':').collect::<Vec<&str>>();
+        Some(last_stash[0].to_string())
+    }
+}
+
 pub fn add_project(path: &str) -> Result<()> {
     let mut db = DB::load_from_disk()?;
     db.add_project(Project::new(path.to_string()));
@@ -172,62 +238,6 @@ pub fn list_projects() -> Result<()> {
         }
     }
     Ok(())
-}
-
-pub fn checkout(path: &str, branch: &str) -> Result<()> {
-    let cur_branch = get_current_branch(path)?;
-    let stash_name = format!("lazy-git-checkout:{}", cur_branch);
-    run_git_command(path, vec!["stash", "-m", stash_name.as_str()])?;
-    run_git_command(path, vec!["checkout", branch])?;
-    let last_stashed = get_last_stashed(path, branch);
-    if let Some(last_stashed) = last_stashed {
-        run_git_command(path, vec!["stash", "pop", last_stashed.as_ref()])?;
-    }
-    Ok(())
-}
-
-pub fn all_project_branches(path: &str) -> Result<Vec<String>> {
-    let output = run_git_command(path, vec!["branch", "-a"])?;
-    let branches = String::from_utf8(output.stdout)?;
-    let branches = branches.split('\n');
-    let branches = branches
-        .map(|b| b.trim())
-        .filter(|b| !b.is_empty())
-        .map(|b| b.trim_start_matches('*'))
-        .map(|b| b.trim())
-        .map(|b| b.to_string())
-        .collect::<Vec<String>>();
-    Ok(branches)
-}
-
-pub fn get_current_branch(path: &str) -> Result<String> {
-    let output = run_git_command(path, vec!["rev-parse", "--abbrev-ref", "HEAD"])?;
-    let branch = String::from_utf8(output.stdout)?;
-    Ok(branch.trim().to_string())
-}
-
-fn run_git_command(path: &str, command: Vec<&str>) -> Result<Output> {
-    let output = std::process::Command::new("git")
-        .args(command)
-        .current_dir(path)
-        .output()?;
-    if !output.status.success() {
-        let error = String::from_utf8(output.stderr)?;
-        return Err(anyhow::anyhow!(error));
-    }
-    Ok(output)
-}
-
-fn get_last_stashed(path: &str, branch: &str) -> Option<String> {
-    let output = run_git_command(path, vec!["stash", "list"]).unwrap();
-    let stashes = String::from_utf8(output.stdout).unwrap();
-    let stashes = stashes.split('\n');
-    let stash_name = format!("lazy-git-checkout:{}", branch);
-    let stashes = stashes.filter(|s| s.contains(stash_name.as_str()));
-    let stashes = stashes.collect::<Vec<&str>>();
-    let last_stash = stashes.first()?;
-    let last_stash = last_stash.split(':').collect::<Vec<&str>>();
-    Some(last_stash[0].to_string())
 }
 
 // returns the first project that matches with the path.
