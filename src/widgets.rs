@@ -351,19 +351,21 @@ impl ChangeBranchesWidget {
         Ok(())
     }
 
-    pub async fn on_tick(&mut self) -> Result<()> {
-        let status = self.git.poll_checkout_status().await?;
+    /// returns true when checkout is done
+    pub async fn on_tick(&mut self) -> bool {
+        let status = self.git.poll_checkout_status().await;
         match status {
             Some(core::CheckoutStatus::Progress(data)) => {
                 self.console.push_str(data.as_str());
+                self.console.push('\n');
             }
-            Some(core::CheckoutStatus::Done) => {}
+            Some(core::CheckoutStatus::Done) => return true,
             Some(core::CheckoutStatus::Failed(err)) => {
                 self.console.push_str(err.to_string().as_str());
             }
             _ => {}
         };
-        Ok(())
+        false
     }
 
     pub fn draw(&mut self, f: &mut Frame, area: Rect) {

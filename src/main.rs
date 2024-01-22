@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
         let mut git = core::Git::new(proj.path).await?;
         git.checkout(branch.as_str()).await?;
         loop {
-            let status = git.poll_checkout_status().await?;
+            let status = git.poll_checkout_status().await;
             match status {
                 Some(core::CheckoutStatus::Progress(data)) => {
                     println!("{}", data);

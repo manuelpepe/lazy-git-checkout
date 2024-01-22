@@ -62,12 +62,11 @@ impl UI {
         })
     }
 
-    async fn on_tick(&mut self) -> Result<()> {
-        match self.mode {
-            Mode::Checkout => self.change_branches_widget.on_tick().await?,
-            _ => {}
+    async fn on_tick(&mut self) -> ShouldExit {
+        if let Mode::Checkout = self.mode {
+            return self.change_branches_widget.on_tick().await;
         }
-        Ok(())
+        false
     }
 
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
@@ -112,7 +111,7 @@ impl UI {
             }
             Mode::Checkout => {
                 self.change_branches_widget.checkout_selected().await?;
-                Ok(true)
+                Ok(false)
             }
         }
     }
@@ -218,7 +217,10 @@ async fn run_ui<B: Backend + Write>(
             }
         }
         if last_tick.elapsed() >= tick_rate {
-            app.on_tick().await?;
+            let should_exit = app.on_tick().await;
+            if should_exit {
+                return Ok(());
+            }
             last_tick = Instant::now();
         }
     }

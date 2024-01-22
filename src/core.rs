@@ -1,6 +1,7 @@
-use std::{io::Write, process::Output, vec};
+use std::{io::Write, process::Output, sync::Arc, vec};
 
 use anyhow::{anyhow, Error, Result};
+use tokio::sync::Mutex;
 
 const DB_PATH: &str = "/etc/lazy-git-checkout.db.txt";
 const PROJECT_PATH_DELIMITER: &str = ";;;;";
@@ -108,8 +109,7 @@ impl DB {
 pub struct Git {
     pub path: String,
     tx: Option<tokio::sync::mpsc::Sender<GitCommand>>,
-    checkout_rx: Option<tokio::sync::mpsc::Receiver<GitResponse>>,
-    checkout_tx: Option<tokio::sync::mpsc::Sender<GitResponse>>,
+    checkout_events: Arc<Mutex<Vec<CheckoutStatus>>>,
 }
 
 impl Git {
@@ -117,8 +117,7 @@ impl Git {
         let mut git = Git {
             path,
             tx: None,
-            checkout_rx: None,
-            checkout_tx: None,
+            checkout_events: Arc::new(Mutex::new(Vec::new())),
         };
         git.spawn_worker().await?;
         Ok(git)
@@ -151,46 +150,36 @@ impl Git {
     }
 
     pub async fn checkout(&mut self, branch: &str) -> Result<()> {
-        if self.checkout_rx.is_some() {
-            return Err(anyhow!("checkout already in progress"));
-        }
-        let (tx, rx) = tokio::sync::mpsc::channel(10);
-        self.checkout_rx = Some(rx);
-        self.checkout_tx = Some(tx.clone());
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+        let events = self.checkout_events.clone();
         self.tx
             .as_ref()
             .ok_or(anyhow!("worker not spawned"))?
-            .send(GitCommand::Checkout(tx.clone(), branch.to_string()))
+            .send(GitCommand::Checkout(tx, branch.to_string()))
             .await?;
-        // TODO: Try to create loop that always rx.recv() and write results to mutexed vec.
-        //       Then make poll_checkout_status() check the mutexed vec and copy data to
-        //       a non-mutexed vec that can be quickly read by the UI.
+        tokio::spawn(async move {
+            loop {
+                if let Ok(GitResponse::Checkout(status)) = rx.try_recv() {
+                    match status {
+                        CheckoutStatus::Done => {
+                            events.lock().await.push(status);
+                            break;
+                        }
+                        _ => events.lock().await.push(status),
+                    }
+                }
+            }
+        });
         Ok(())
     }
 
-    pub async fn poll_checkout_status(&mut self) -> Result<Option<CheckoutStatus>> {
-        let rx = match self.checkout_rx.as_mut() {
-            Some(rx) => rx,
-            None => return Ok(None),
-        };
-
-        let status = rx.recv().await;
-        Ok(match status {
-            Some(GitResponse::Checkout(status)) => match status {
-                CheckoutStatus::Progress(_) => Some(status),
-                CheckoutStatus::Done => {
-                    self.checkout_rx = None;
-                    self.checkout_tx = None;
-                    Some(status)
-                }
-                CheckoutStatus::Failed(_) => {
-                    self.checkout_rx = None;
-                    self.checkout_tx = None;
-                    Some(status)
-                }
-            },
-            _ => None,
-        })
+    pub async fn poll_checkout_status(&mut self) -> Option<CheckoutStatus> {
+        let mut rx = self.checkout_events.lock().await;
+        if rx.is_empty() {
+            return None;
+        }
+        let status = rx.remove(0);
+        Some(status)
     }
 
     pub async fn get_current_branch(&self) -> Result<String> {
@@ -255,8 +244,7 @@ impl GitWorker {
         let cur_branch = match self.get_current_branch().await {
             Ok(branch) => branch,
             Err(e) => {
-                tx.send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
-                    .await
+                tx.try_send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
                     .unwrap();
                 return;
             }
@@ -292,25 +280,25 @@ impl GitWorker {
     ) {
         match output {
             Ok(output) => {
-                let data = match String::from_utf8(output.stdout) {
-                    Ok(data) => data,
+                match String::from_utf8(output.stdout) {
+                    Ok(data) => {
+                        tx.try_send(GitResponse::Checkout(CheckoutStatus::Progress(data)))
+                            .unwrap();
+                    }
                     Err(e) => {
                         let e = anyhow!(e);
                         tx.send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
                             .await
                             .unwrap();
-                        return;
                     }
                 };
-                tx.try_send(GitResponse::Checkout(CheckoutStatus::Progress(data)))
-                    .unwrap();
             }
             Err(e) => {
                 tx.send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
                     .await
                     .unwrap();
             }
-        }
+        };
     }
 
     async fn all_project_branches(&self, tx: tokio::sync::oneshot::Sender<GitResponse>) {
