@@ -1,6 +1,6 @@
 use std::{io::Write, process::Output, vec};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 
 const DB_PATH: &str = "/etc/lazy-git-checkout.db.txt";
 const PROJECT_PATH_DELIMITER: &str = ";;;;";
@@ -104,30 +104,231 @@ impl DB {
     }
 }
 
+#[derive(Debug)]
 pub struct Git {
     pub path: String,
+    tx: Option<tokio::sync::mpsc::Sender<GitCommand>>,
+    checkout_rx: Option<tokio::sync::mpsc::Receiver<GitResponse>>,
+    checkout_tx: Option<tokio::sync::mpsc::Sender<GitResponse>>,
 }
 
 impl Git {
-    pub fn new(path: String) -> Git {
-        Git { path }
+    pub async fn new(path: String) -> Result<Git> {
+        let mut git = Git {
+            path,
+            tx: None,
+            checkout_rx: None,
+            checkout_tx: None,
+        };
+        git.spawn_worker().await?;
+        Ok(git)
     }
 
-    pub fn checkout(&self, branch: &str) -> Result<()> {
-        let cur_branch = self.get_current_branch()?;
-        let stash_name = format!("lazy-git-checkout:{}", cur_branch);
-        self.run_git_command(vec!["stash", "-m", stash_name.as_str()])?;
-        self.run_git_command(vec!["checkout", branch])?;
-        let last_stashed = self.get_last_stashed(branch);
-        if let Some(last_stashed) = last_stashed {
-            self.run_git_command(vec!["stash", "pop", last_stashed.as_ref()])?;
-        }
+    pub async fn spawn_worker(&mut self) -> Result<()> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        self.tx = Some(tx);
+        let mut worker = GitWorker {
+            path: self.path.clone(),
+            rx,
+        };
+        tokio::spawn(async move {
+            worker.run().await;
+        });
         Ok(())
     }
 
-    pub fn all_project_branches(&self) -> Result<Vec<String>> {
-        let output = self.run_git_command(vec!["branch", "-a"])?;
-        let branches = String::from_utf8(output.stdout)?;
+    pub async fn all_project_branches(&self) -> Result<Vec<String>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.tx
+            .as_ref()
+            .ok_or(anyhow!("worker not spawned"))?
+            .send(GitCommand::AllProjectBranches(tx))
+            .await?;
+        match rx.await {
+            Ok(GitResponse::AllProjectBranches(branches)) => branches,
+            _ => Err(anyhow!("invalid response")),
+        }
+    }
+
+    pub async fn checkout(&mut self, branch: &str) -> Result<()> {
+        if self.checkout_rx.is_some() {
+            return Err(anyhow!("checkout already in progress"));
+        }
+        let (tx, rx) = tokio::sync::mpsc::channel(10);
+        self.checkout_rx = Some(rx);
+        self.checkout_tx = Some(tx.clone());
+        self.tx
+            .as_ref()
+            .ok_or(anyhow!("worker not spawned"))?
+            .send(GitCommand::Checkout(tx.clone(), branch.to_string()))
+            .await?;
+        // TODO: Try to create loop that always rx.recv() and write results to mutexed vec.
+        //       Then make poll_checkout_status() check the mutexed vec and copy data to
+        //       a non-mutexed vec that can be quickly read by the UI.
+        Ok(())
+    }
+
+    pub async fn poll_checkout_status(&mut self) -> Result<Option<CheckoutStatus>> {
+        let rx = match self.checkout_rx.as_mut() {
+            Some(rx) => rx,
+            None => return Ok(None),
+        };
+
+        let status = rx.recv().await;
+        Ok(match status {
+            Some(GitResponse::Checkout(status)) => match status {
+                CheckoutStatus::Progress(_) => Some(status),
+                CheckoutStatus::Done => {
+                    self.checkout_rx = None;
+                    self.checkout_tx = None;
+                    Some(status)
+                }
+                CheckoutStatus::Failed(_) => {
+                    self.checkout_rx = None;
+                    self.checkout_tx = None;
+                    Some(status)
+                }
+            },
+            _ => None,
+        })
+    }
+
+    pub async fn get_current_branch(&self) -> Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.tx
+            .as_ref()
+            .ok_or(anyhow!("worker not spawned"))?
+            .send(GitCommand::GetCurrentBranch(tx))
+            .await?;
+        match rx.await {
+            Ok(GitResponse::GetCurrentBranch(result)) => result,
+            _ => Err(anyhow!("invalid response")),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum GitCommand {
+    Checkout(tokio::sync::mpsc::Sender<GitResponse>, String),
+    AllProjectBranches(tokio::sync::oneshot::Sender<GitResponse>),
+    GetCurrentBranch(tokio::sync::oneshot::Sender<GitResponse>),
+}
+
+#[derive(Debug)]
+pub enum CheckoutStatus {
+    Progress(String),
+    Done,
+    Failed(Error),
+}
+
+#[derive(Debug)]
+enum GitResponse {
+    Checkout(CheckoutStatus),
+    AllProjectBranches(Result<Vec<String>>),
+    GetCurrentBranch(Result<String>),
+}
+
+#[derive(Debug)]
+pub struct GitWorker {
+    path: String,
+    rx: tokio::sync::mpsc::Receiver<GitCommand>,
+}
+
+impl GitWorker {
+    pub async fn run(&mut self) {
+        while let Some(command) = self.rx.recv().await {
+            match command {
+                GitCommand::Checkout(tx, branch) => {
+                    tx.try_send(GitResponse::Checkout(CheckoutStatus::Progress(
+                        "Stashing current changes...".to_string(),
+                    )))
+                    .unwrap();
+                    self.checkout(tx, branch.as_str()).await
+                }
+                GitCommand::AllProjectBranches(tx) => self.all_project_branches(tx).await,
+                GitCommand::GetCurrentBranch(tx) => self.send_current_branch(tx).await,
+            }
+        }
+    }
+
+    async fn checkout(&self, tx: tokio::sync::mpsc::Sender<GitResponse>, branch: &str) {
+        let cur_branch = match self.get_current_branch().await {
+            Ok(branch) => branch,
+            Err(e) => {
+                tx.send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
+                    .await
+                    .unwrap();
+                return;
+            }
+        };
+
+        let stash_name = format!("lazy-git-checkout:{}", cur_branch);
+        let stash_name = stash_name.as_str();
+
+        let res = self.run_git_command(vec!["stash", "-m", stash_name]).await;
+        self.send_output_or_err(tx.clone(), res).await;
+
+        let res = self.run_git_command(vec!["checkout", branch]).await;
+        self.send_output_or_err(tx.clone(), res).await;
+
+        let last_stashed = self.get_last_stashed(branch).await;
+        if let Some(last_stashed) = last_stashed {
+            let last_stashed = last_stashed.as_ref();
+            let res = self
+                .run_git_command(vec!["stash", "pop", last_stashed])
+                .await;
+            self.send_output_or_err(tx.clone(), res).await;
+        }
+
+        tx.send(GitResponse::Checkout(CheckoutStatus::Done))
+            .await
+            .unwrap();
+    }
+
+    async fn send_output_or_err(
+        &self,
+        tx: tokio::sync::mpsc::Sender<GitResponse>,
+        output: Result<Output>,
+    ) {
+        match output {
+            Ok(output) => {
+                let data = match String::from_utf8(output.stdout) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        let e = anyhow!(e);
+                        tx.send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
+                            .await
+                            .unwrap();
+                        return;
+                    }
+                };
+                tx.try_send(GitResponse::Checkout(CheckoutStatus::Progress(data)))
+                    .unwrap();
+            }
+            Err(e) => {
+                tx.send(GitResponse::Checkout(CheckoutStatus::Failed(e)))
+                    .await
+                    .unwrap();
+            }
+        }
+    }
+
+    async fn all_project_branches(&self, tx: tokio::sync::oneshot::Sender<GitResponse>) {
+        let output = match self.run_git_command(vec!["branch", "-a"]).await {
+            Ok(output) => output,
+            Err(e) => {
+                tx.send(GitResponse::AllProjectBranches(Err(e))).unwrap();
+                return;
+            }
+        };
+        let branches = match String::from_utf8(output.stdout) {
+            Ok(branches) => branches,
+            Err(e) => {
+                tx.send(GitResponse::AllProjectBranches(Err(anyhow!(e))))
+                    .unwrap();
+                return;
+            }
+        };
         let branches = branches.split('\n');
         let branches = branches
             .map(|b| b.trim())
@@ -136,16 +337,24 @@ impl Git {
             .map(|b| b.trim())
             .map(|b| b.to_string())
             .collect::<Vec<String>>();
-        Ok(branches)
+        tx.send(GitResponse::AllProjectBranches(Ok(branches)))
+            .unwrap();
     }
 
-    pub fn get_current_branch(&self) -> Result<String> {
-        let output = self.run_git_command(vec!["rev-parse", "--abbrev-ref", "HEAD"])?;
+    async fn send_current_branch(&self, tx: tokio::sync::oneshot::Sender<GitResponse>) {
+        let res = self.get_current_branch().await;
+        tx.send(GitResponse::GetCurrentBranch(res)).unwrap();
+    }
+
+    async fn get_current_branch(&self) -> Result<String> {
+        let output = self
+            .run_git_command(vec!["rev-parse", "--abbrev-ref", "HEAD"])
+            .await?;
         let branch = String::from_utf8(output.stdout)?;
         Ok(branch.trim().to_string())
     }
 
-    fn run_git_command(&self, command: Vec<&str>) -> Result<Output> {
+    async fn run_git_command(&self, command: Vec<&str>) -> Result<Output> {
         let output = std::process::Command::new("git")
             .args(command)
             .current_dir(self.path.as_str())
@@ -157,8 +366,8 @@ impl Git {
         Ok(output)
     }
 
-    fn get_last_stashed(&self, branch: &str) -> Option<String> {
-        let output = self.run_git_command(vec!["stash", "list"]).unwrap();
+    async fn get_last_stashed(&self, branch: &str) -> Option<String> {
+        let output = self.run_git_command(vec!["stash", "list"]).await.unwrap();
         let stashes = String::from_utf8(output.stdout).unwrap();
         let stashes = stashes.split('\n');
         let stash_name = format!("lazy-git-checkout:{}", branch);

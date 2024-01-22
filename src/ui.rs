@@ -42,8 +42,8 @@ struct UI {
 }
 
 impl UI {
-    fn new(project: &Project, git: core::Git) -> Result<UI> {
-        let branches = git.all_project_branches()?;
+    async fn new(project: &Project, git: core::Git) -> Result<UI> {
+        let branches = git.all_project_branches().await?;
         let saved_branches = project
             .branches
             .iter()
@@ -56,9 +56,18 @@ impl UI {
                 project.path.clone(),
                 saved_branches.clone(),
                 git,
-            )?,
+            )
+            .await?,
             add_branches_widget: AddBranchWidget::new(project.path.clone(), branches),
         })
+    }
+
+    async fn on_tick(&mut self) -> Result<()> {
+        match self.mode {
+            Mode::Checkout => self.change_branches_widget.on_tick().await?,
+            _ => {}
+        }
+        Ok(())
     }
 
     fn on_char(&mut self, c: char) -> Result<ShouldExit> {
@@ -93,7 +102,7 @@ impl UI {
         Ok(false)
     }
 
-    fn on_enter(&mut self) -> Result<ShouldExit> {
+    async fn on_enter(&mut self) -> Result<ShouldExit> {
         match self.mode {
             Mode::Add => {
                 self.add_branches_widget.add_branch()?;
@@ -102,7 +111,7 @@ impl UI {
                 Ok(false)
             }
             Mode::Checkout => {
-                self.change_branches_widget.checkout_selected()?;
+                self.change_branches_widget.checkout_selected().await?;
                 Ok(true)
             }
         }
@@ -163,7 +172,7 @@ impl UI {
     }
 }
 
-pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
+pub async fn start_ui(project: Project, git: core::Git) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -172,8 +181,8 @@ pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
 
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = UI::new(&project, git)?;
-    let res = run_ui(&mut terminal, app, tick_rate);
+    let app = UI::new(&project, git).await?;
+    let res = run_ui(&mut terminal, app, tick_rate).await;
 
     // restore terminal
     disable_raw_mode()?;
@@ -191,7 +200,7 @@ pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
     Ok(())
 }
 
-fn run_ui<B: Backend + Write>(
+async fn run_ui<B: Backend + Write>(
     terminal: &mut Terminal<B>,
     mut app: UI,
     tick_rate: Duration,
@@ -202,19 +211,20 @@ fn run_ui<B: Backend + Write>(
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         if crossterm::event::poll(timeout)? {
-            match handle_input(&mut app) {
+            match handle_input(&mut app).await {
                 Ok(true) => return Ok(()),
                 Err(err) => bail!(err),
                 Ok(false) => {} // continue running
             }
         }
         if last_tick.elapsed() >= tick_rate {
+            app.on_tick().await?;
             last_tick = Instant::now();
         }
     }
 }
 
-fn handle_input(app: &mut UI) -> Result<ShouldExit> {
+async fn handle_input(app: &mut UI) -> Result<ShouldExit> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
             return if key.modifiers == crossterm::event::KeyModifiers::SHIFT {
@@ -227,7 +237,7 @@ fn handle_input(app: &mut UI) -> Result<ShouldExit> {
             } else {
                 match key.code {
                     KeyCode::Esc => app.on_esc(),
-                    KeyCode::Enter => app.on_enter(),
+                    KeyCode::Enter => app.on_enter().await,
                     KeyCode::Char(c) => app.on_char(c),
                     KeyCode::Backspace => app.on_backspace(),
                     KeyCode::Down => app.on_down(),

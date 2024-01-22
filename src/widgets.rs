@@ -240,10 +240,11 @@ pub struct ChangeBranchesWidget {
     input: String,
     cur_branch: String,
     git: core::Git,
+    console: String,
 }
 
 impl ChangeBranchesWidget {
-    pub fn new(
+    pub async fn new(
         project_path: String,
         saved_branches: Vec<String>,
         git: core::Git,
@@ -253,8 +254,9 @@ impl ChangeBranchesWidget {
             project_path,
             saved_branches: StatefulList::with_items(saved_branches),
             input: String::new(),
-            cur_branch: git.get_current_branch()?,
+            cur_branch: git.get_current_branch().await?,
             git,
+            console: String::new(),
         })
     }
 
@@ -315,7 +317,7 @@ impl ChangeBranchesWidget {
         self.input.clear();
     }
 
-    pub fn checkout_selected(&self) -> Result<()> {
+    pub async fn checkout_selected(&mut self) -> Result<()> {
         let selected = self
             .saved_branches
             .selected()
@@ -324,7 +326,7 @@ impl ChangeBranchesWidget {
         if branch == self.cur_branch {
             return Ok(());
         }
-        self.git.checkout(branch)?;
+        self.git.checkout(branch).await?;
         Ok(())
     }
 
@@ -349,6 +351,21 @@ impl ChangeBranchesWidget {
         Ok(())
     }
 
+    pub async fn on_tick(&mut self) -> Result<()> {
+        let status = self.git.poll_checkout_status().await?;
+        match status {
+            Some(core::CheckoutStatus::Progress(data)) => {
+                self.console.push_str(data.as_str());
+            }
+            Some(core::CheckoutStatus::Done) => {}
+            Some(core::CheckoutStatus::Failed(err)) => {
+                self.console.push_str(err.to_string().as_str());
+            }
+            _ => {}
+        };
+        Ok(())
+    }
+
     pub fn draw(&mut self, f: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -367,28 +384,34 @@ impl ChangeBranchesWidget {
 
         f.render_widget(input, chunks[0]);
 
-        let items = self
-            .saved_branches
-            .items
-            .iter()
-            .map(|b| {
-                if *b == self.cur_branch {
-                    Text::styled(format!("{b} *"), Style::default().fg(Color::LightGreen))
-                } else {
-                    Text::raw(b)
-                }
-            })
-            .collect::<Vec<Text>>();
+        if self.console.is_empty() {
+            let items = self
+                .saved_branches
+                .items
+                .iter()
+                .map(|b| {
+                    if *b == self.cur_branch {
+                        Text::styled(format!("{b} *"), Style::default().fg(Color::LightGreen))
+                    } else {
+                        Text::raw(b)
+                    }
+                })
+                .collect::<Vec<Text>>();
 
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Branches"))
-            .highlight_style(
-                Style::default()
-                    .bg(Color::LightGreen)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol(">> ");
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title("Branches"))
+                .highlight_style(
+                    Style::default()
+                        .bg(Color::LightGreen)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol(">> ");
 
-        f.render_stateful_widget(list, chunks[1], &mut self.saved_branches.state);
+            f.render_stateful_widget(list, chunks[1], &mut self.saved_branches.state);
+        } else {
+            let console = Paragraph::new(self.console.as_str())
+                .block(Block::default().borders(Borders::ALL).title("Console"));
+            f.render_widget(console, chunks[1]);
+        }
     }
 }
