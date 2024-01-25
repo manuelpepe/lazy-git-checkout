@@ -17,6 +17,14 @@ It also allows you to track your most used branches to avoid any `git branch | g
 
 ## Installing
 
+**From crates.io:**
+
+```bash
+cargo install lazy-git-checkout
+```
+
+**From source:**
+
 ```bash
 git clone https://github.com/manuelpepe/lazy-git-checkout.git
 cd lazy-git-checkout
