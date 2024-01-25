@@ -53,8 +53,8 @@ $ lazy-git-commit       # launch ui
 | Enter         | Checkout to branch                | Checkout to branch  | Add branch to lgc known branches |
 | Backspace     | Delete char                       | Delete char         | Delete char                      |
 | ArrUp         | Move selection up                 | Move selection up   | Move selection up                |
-| Shift+ArrUp   | Swap selection up                 | Move selection up   | Move selection up                |
-| ArrDown       | Move selection down               |                     |                                  |
+| ArrDown       | Move selection down               | Move selection down | Move selection down              |
+| Shift+ArrUp   | Swap selection up                 |                     |                                  |
 | Shift+ArrDown | Swap selection down               |                     |                                  |
 | q             | Exit app                          |                     |                                  |
 | a             | Set Mode: Add                     |                     |                                  |
