@@ -2,8 +2,14 @@
 name = "lazy-git-checkout"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Change branches while stashing and unstashing changes"
+readme = "README.md"
+license-file = "LICENSE"
+repository = "https://github.com/manuelpepe/lazy-git-checkout"
+homepage = "https://github.com/manuelpepe/lazy-git-checkout"
+keywords = ["git", "checkout", "stash", "unstash", "branch"]
+categories = ["development-tools", "command-line-utilities"]
+authors = ["Manuel Pepe"]
 
 [dependencies]
 anyhow = "1.0.79"
