@@ -116,11 +116,11 @@ impl Git {
     pub fn checkout(&self, branch: &str) -> Result<()> {
         let cur_branch = self.get_current_branch()?;
         let stash_name = format!("lazy-git-checkout:{}", cur_branch);
-        self.run_git_command(vec!["stash", "-m", stash_name.as_str()])?;
-        self.run_git_command(vec!["checkout", branch])?;
+        self.stream_git_command(vec!["stash", "-m", stash_name.as_str()])?;
+        self.stream_git_command(vec!["checkout", branch])?;
         let last_stashed = self.get_last_stashed(branch);
         if let Some(last_stashed) = last_stashed {
-            self.run_git_command(vec!["stash", "pop", last_stashed.as_ref()])?;
+            self.stream_git_command(vec!["stash", "pop", last_stashed.as_ref()])?;
         }
         Ok(())
     }
@@ -155,6 +155,15 @@ impl Git {
             return Err(anyhow::anyhow!(error));
         }
         Ok(output)
+    }
+
+    fn stream_git_command(&self, command: Vec<&str>) -> Result<()> {
+        std::process::Command::new("git")
+            .args(command)
+            .current_dir(self.path.as_str())
+            .spawn()?
+            .wait()?;
+        Ok(())
     }
 
     fn get_last_stashed(&self, branch: &str) -> Option<String> {

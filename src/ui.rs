@@ -39,6 +39,8 @@ struct UI {
 
     change_branches_widget: ChangeBranchesWidget,
     add_branches_widget: AddBranchWidget,
+
+    exit_with_checkout: bool,
 }
 
 impl UI {
@@ -58,6 +60,7 @@ impl UI {
                 git,
             )?,
             add_branches_widget: AddBranchWidget::new(project.path.clone(), branches),
+            exit_with_checkout: false,
         })
     }
 
@@ -102,7 +105,7 @@ impl UI {
                 Ok(false)
             }
             Mode::Checkout => {
-                self.change_branches_widget.checkout_selected()?;
+                self.exit_with_checkout = true;
                 Ok(true)
             }
         }
@@ -161,6 +164,14 @@ impl UI {
         }
         Ok(false)
     }
+
+    fn exit(&self) -> bool {
+        self.exit_with_checkout
+    }
+
+    fn run_exit_hooks(&self) -> Result<()> {
+        self.change_branches_widget.checkout_selected()
+    }
 }
 
 pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
@@ -172,8 +183,8 @@ pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
 
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = UI::new(&project, git)?;
-    let res = run_ui(&mut terminal, app, tick_rate);
+    let mut app = UI::new(&project, git)?;
+    let res = run_ui(&mut terminal, &mut app, tick_rate);
 
     // restore terminal
     disable_raw_mode()?;
@@ -186,6 +197,8 @@ pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
 
     if let Err(err) = res {
         println!("{err:?}");
+    } else {
+        app.run_exit_hooks()?;
     }
 
     Ok(())
@@ -193,16 +206,21 @@ pub fn start_ui(project: Project, git: core::Git) -> Result<()> {
 
 fn run_ui<B: Backend + Write>(
     terminal: &mut Terminal<B>,
-    mut app: UI,
+    app: &mut UI,
     tick_rate: Duration,
 ) -> Result<()> {
     let mut last_tick = Instant::now();
     loop {
-        terminal.draw(|f| draw(f, &mut app))?;
+        // TODO: this exit check should be internal to UI
+        if app.exit() {
+            return Ok(());
+        }
+
+        terminal.draw(|f| draw(f, app))?;
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         if crossterm::event::poll(timeout)? {
-            match handle_input(&mut app) {
+            match handle_input(app) {
                 Ok(true) => return Ok(()),
                 Err(err) => bail!(err),
                 Ok(false) => {} // continue running
