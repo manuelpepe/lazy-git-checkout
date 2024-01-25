@@ -1,6 +1,6 @@
 [package]
 name = "lazy-git-checkout"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Change branches while stashing and unstashing changes"
 readme = "README.md"
