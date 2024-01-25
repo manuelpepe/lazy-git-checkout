@@ -116,10 +116,13 @@ impl Git {
     pub fn checkout(&self, branch: &str) -> Result<()> {
         let cur_branch = self.get_current_branch()?;
         let stash_name = format!("lazy-git-checkout:{}", cur_branch);
+        println!("> stashing...");
         self.stream_git_command(vec!["stash", "-m", stash_name.as_str()])?;
+        println!("> checkout...");
         self.stream_git_command(vec!["checkout", branch])?;
         let last_stashed = self.get_last_stashed(branch);
         if let Some(last_stashed) = last_stashed {
+            println!("> popping stash...");
             self.stream_git_command(vec!["stash", "pop", last_stashed.as_ref()])?;
         }
         Ok(())
