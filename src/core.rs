@@ -171,14 +171,18 @@ impl Git {
 
     fn get_last_stashed(&self, branch: &str) -> Option<String> {
         let output = self.run_git_command(vec!["stash", "list"]).unwrap();
-        let stashes = String::from_utf8(output.stdout).unwrap();
-        let stashes = stashes.split('\n');
         let stash_name = format!("lazy-git-checkout:{}", branch);
-        let stashes = stashes.filter(|s| s.ends_with(stash_name.as_str()));
-        let stashes = stashes.collect::<Vec<&str>>();
-        let last_stash = stashes.first()?;
-        let last_stash = last_stash.split(':').collect::<Vec<&str>>();
-        Some(last_stash[0].to_string())
+        let matched = String::from_utf8(output.stdout)
+            .ok()?
+            .split('\n')
+            .filter(|s| s.ends_with(stash_name.as_str()))
+            .collect::<Vec<&str>>()
+            .first()?
+            .split(':')
+            .collect::<Vec<&str>>()
+            .first()?
+            .to_string();
+        Some(matched)
     }
 }
 
