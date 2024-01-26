@@ -147,7 +147,7 @@ impl AddBranchWidget {
         let items = self
             .all_branches
             .iter()
-            .filter(|b| b.starts_with(self.add_branch_input.as_str()))
+            .filter(|b| b.contains(self.add_branch_input.as_str()))
             .cloned()
             .collect::<Vec<String>>();
         self.add_branch_autocomplete.set_items(items);
