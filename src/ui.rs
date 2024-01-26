@@ -170,7 +170,10 @@ impl UI {
     }
 
     fn run_exit_hooks(&self) -> Result<()> {
-        self.change_branches_widget.checkout_selected()
+        if self.exit_with_checkout {
+            self.change_branches_widget.checkout_selected()?;
+        };
+        Ok(())
     }
 }
 
