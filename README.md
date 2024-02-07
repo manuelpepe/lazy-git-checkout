@@ -2,6 +2,8 @@
 
 Small program for quickly switching between branches, stashing and unstaging your last changes.
 
+![demo gif](./demo.gif)
+
 Changing branches with lgc is similar to doing:
 
 ```bash
